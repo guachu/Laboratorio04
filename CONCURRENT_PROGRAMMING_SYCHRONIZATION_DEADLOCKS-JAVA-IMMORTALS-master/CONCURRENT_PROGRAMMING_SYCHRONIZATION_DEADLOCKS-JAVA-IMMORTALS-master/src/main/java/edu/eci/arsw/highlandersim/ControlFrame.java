@@ -21,6 +21,7 @@ import javax.swing.JLabel;
 import javax.swing.JTextField;
 import java.awt.Color;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import javax.swing.JScrollBar;
@@ -43,12 +44,19 @@ public class ControlFrame extends JFrame {
    //
     private static AtomicBoolean isPaused;
     private static Thread originalThread;
+    private static AtomicBoolean isStopped;
+    private static AtomicInteger immortalsPaused;
+    private static final long serialVersionUID = 1L;
+    
+    private final JButton btnStart;
+    private final JButton btnStop;
 
     /**
      * Launch the application.
      */
-    public static void main(String[] args) {
+        public static void main(String[] args) {
         EventQueue.invokeLater(new Runnable() {
+            @Override
             public void run() {
                 try {
                     ControlFrame frame = new ControlFrame();
@@ -73,49 +81,26 @@ public class ControlFrame extends JFrame {
 
         JToolBar toolBar = new JToolBar();
         contentPane.add(toolBar, BorderLayout.NORTH);
-        //
+
         isPaused = new AtomicBoolean();
+        isStopped = new AtomicBoolean();
+        immortalsPaused = new AtomicInteger();
         originalThread = Thread.currentThread();
-        
-        final JButton btnStart = new JButton("Start");
+
+        btnStart = new JButton("Start");
         btnStart.addActionListener(new ActionListener() {
+            @Override
             public void actionPerformed(ActionEvent e) {
-
-                immortals = setupInmortals();
-
-                if (immortals != null) {
-                    for (Immortal im : immortals) {
-                        im.start();
-                    }
-                }
-
-                btnStart.setEnabled(false);
-
+                ControlFrame.this.startGame();
             }
         });
         toolBar.add(btnStart);
 
         JButton btnPauseAndCheck = new JButton("Pause and check");
         btnPauseAndCheck.addActionListener(new ActionListener() {
+            @Override
             public void actionPerformed(ActionEvent e) {
-
-                //
-                isPaused.set(true);
-                try {
-                    Thread.sleep(1);
-                } catch (InterruptedException ex) {
-                    Logger.getLogger(ControlFrame.class.getName()).log(Level.SEVERE, null, ex);
-                }
-                
-                int sum = 0;
-                for (Immortal im : immortals) {
-                    sum += im.getHealth();
-                }
-
-                statisticsLabel.setText("<html>"+immortals.toString()+"<br>Health sum:"+ sum);
-                
-                
-
+                ControlFrame.this.pauseGame();
             }
         });
         toolBar.add(btnPauseAndCheck);
@@ -123,13 +108,9 @@ public class ControlFrame extends JFrame {
         JButton btnResume = new JButton("Resume");
 
         btnResume.addActionListener(new ActionListener() {
+            @Override
             public void actionPerformed(ActionEvent e) {
-                //
-                isPaused.set(false);
-                synchronized (originalThread) {
-                    originalThread.notifyAll();
-                }
-
+                ControlFrame.this.resumeGame();
             }
         });
 
@@ -143,7 +124,14 @@ public class ControlFrame extends JFrame {
         toolBar.add(numOfImmortals);
         numOfImmortals.setColumns(10);
 
-        JButton btnStop = new JButton("STOP");
+        btnStop = new JButton("STOP");
+        btnStop.setEnabled(false);
+        btnStop.addActionListener(new ActionListener() {
+            @Override
+            public void actionPerformed(ActionEvent e) {
+                ControlFrame.this.stopGame();
+            }
+        });
         btnStop.setForeground(Color.RED);
         toolBar.add(btnStop);
 
@@ -153,8 +141,7 @@ public class ControlFrame extends JFrame {
         output = new JTextArea();
         output.setEditable(false);
         scrollPane.setViewportView(output);
-        
-        
+
         statisticsLabel = new JLabel("Immortals total health:");
         contentPane.add(statisticsLabel, BorderLayout.SOUTH);
 
@@ -162,15 +149,16 @@ public class ControlFrame extends JFrame {
 
     public List<Immortal> setupInmortals() {
 
-        ImmortalUpdateReportCallback ucb=new TextAreaUpdateReportCallback(output,scrollPane);
-        
+        ImmortalUpdateReportCallback ucb = new TextAreaUpdateReportCallback(output, scrollPane);
+
         try {
             int ni = Integer.parseInt(numOfImmortals.getText());
 
-            List<Immortal> il = new LinkedList<Immortal>();
+            List<Immortal> il = new LinkedList<>();
+            ImmortalC.getInstance(il, isStopped);
 
             for (int i = 0; i < ni; i++) {
-                Immortal i1 = new Immortal("im" + i, il, DEFAULT_IMMORTAL_HEALTH, DEFAULT_DAMAGE_VALUE,ucb, isPaused, originalThread);
+                Immortal i1 = new Immortal("im" + i, il, DEFAULT_IMMORTAL_HEALTH, DEFAULT_DAMAGE_VALUE, ucb, isPaused, isStopped, originalThread);
                 il.add(i1);
             }
             return il;
@@ -181,18 +169,75 @@ public class ControlFrame extends JFrame {
 
     }
 
+    private void startGame() {
+        immortals = setupInmortals();
+
+        if (immortals != null) {
+            for (Immortal im : immortals) {
+                im.start();
+            }
+        }
+
+        ImmortalC.getInstance().start();
+
+        btnStart.setEnabled(false);
+        btnStop.setEnabled(true);
+    }
+
+    private void stopGame() {
+        isStopped.set(true);
+        btnStop.setEnabled(false);
+        this.pauseGame();
+        System.out.println("Game stopped");
+    }
+
+    private void resumeGame() {
+        isPaused.set(false);
+        synchronized (originalThread) {
+            originalThread.notifyAll();
+        }
+    }
+
+    private void pauseGame() {
+        isPaused.set(true);
+
+        while(immortalsPaused.get() != immortals.size()) {
+            System.out.println(immortalsPaused.get());
+            try {
+                Thread.sleep(50);
+            } catch (InterruptedException ex) {
+                Logger.getLogger(ControlFrame.class.getName()).log(Level.SEVERE, null, ex);
+            }
+        }
+        
+        int sum = 0;
+        for (Immortal im : immortals) {
+            sum += im.getHealth();
+        }
+
+        statisticsLabel.setText("<html>" + immortals.toString() + "<br>Health sum:" + sum);
+        System.out.println("Game paused (Size of list: " + immortals.size() + ")");
+    }
+
+    public static void reportImmortalPaused() {
+        immortalsPaused.addAndGet(1);
+    }
+    
+    public static void reportImmortalResumed() {
+        immortalsPaused.addAndGet(-1);
+    }
 }
 
-class TextAreaUpdateReportCallback implements ImmortalUpdateReportCallback{
+class TextAreaUpdateReportCallback implements ImmortalUpdateReportCallback {
 
     JTextArea ta;
     JScrollPane jsp;
 
-    public TextAreaUpdateReportCallback(JTextArea ta,JScrollPane jsp) {
+    public TextAreaUpdateReportCallback(JTextArea ta, JScrollPane jsp) {
         this.ta = ta;
-        this.jsp=jsp;
-    }       
-    
+        this.jsp = jsp;
+    }
+
     @Override
     public void processReport(String report) {
         ta.append(report);
@@ -205,7 +250,5 @@ class TextAreaUpdateReportCallback implements ImmortalUpdateReportCallback{
             }
         }
         );
-
     }
-    
 }
