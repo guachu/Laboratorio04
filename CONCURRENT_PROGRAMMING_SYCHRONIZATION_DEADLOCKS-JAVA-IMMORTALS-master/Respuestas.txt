@@ -20,7 +20,7 @@ having in mind  that for now the production is slow and the consumption is fast,
  
  
 Part II: 
- 
+Para esta parte de la modificacion del lab anterior se realizo un commit nuevo en esa entrega revizar https://github.com/guachu/Laboratorio03
 Part II:
 
 2.Check the code and identify how the indicated funcionality was implemented. 
@@ -30,4 +30,4 @@ For that case, for N players, what should be that value?
 	A: Ya que la salud por defecto de cada jugador es 100, el valor total de la salud debe ser 100*N.
 
 3.Run the application and verify how the "pause and check" option works, is the invariant satisfied?
-	A: No se satisface, aumenta el número con el tiempo.
+	A: No se satisface, aumenta el nÃºmero con el tiempo.
